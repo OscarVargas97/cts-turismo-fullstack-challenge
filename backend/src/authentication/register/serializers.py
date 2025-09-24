@@ -30,3 +30,17 @@ class UserCreateSerializer(serializers.ModelSerializer):
             email=validated_data.get("email"),
         )
         return user
+
+
+class UserChangePasswordSerializer(serializers.ModelSerializer):
+    password = serializers.CharField(write_only=True, required=True)
+
+    class Meta:
+        model = User
+        fields = ["password"]
+
+    def create(self, validated_data):
+        user = self.context["user"]
+        user.set_password(validated_data["password"])
+        user.save()
+        return user
