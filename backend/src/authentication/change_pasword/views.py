@@ -5,9 +5,11 @@ from rest_framework.views import APIView
 from app.public.mixins import BaseEmailMixin
 from django.conf import settings
 from django.utils.http import urlsafe_base64_encode, urlsafe_base64_decode
-from rest_framework.exceptions import AuthenticationFailed, NotFound
+from rest_framework.exceptions import AuthenticationFailed, NotFound, ValidationError
 from authentication.models import User
 from django.utils.encoding import force_bytes
+from .serializers import ChangePasswordSerializer
+from rest_framework.permissions import AllowAny
 
 
 class ChangePasswordRequestView(APIView, BaseEmailMixin):
@@ -32,3 +34,35 @@ class ChangePasswordRequestView(APIView, BaseEmailMixin):
         self.email_message = f"Para cambiar su contraseña, haga clic en el siguiente enlace: {verification_link}"
         self._handle_email(request)
         return Response({"message": "Email sent"})
+
+
+class ChangePasswordView(APIView):
+    permission_classes = [AllowAny]
+    serializer_class = ChangePasswordSerializer
+
+    def post(self, request):
+        serializer = self.serializer_class(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        try:
+            token = request.data.get("token")
+            full_token = urlsafe_base64_decode(token).decode("utf-8")
+            prefix, uuid_str, token = full_token.split(":::")
+
+            if prefix != "pwd_reset":
+                raise ValidationError("Token inválido")
+
+            user = User.objects.get(uuid=uuid.UUID(uuid_str))
+
+            if not default_token_generator.check_token(user, token):
+                raise ValidationError("Token expirado o inválido")
+
+            user.set_password(serializer.validated_data["new_password"])
+            user.save()
+
+            return Response({"message": "Contraseña actualizada exitosamente"})
+
+        except (TypeError, ValueError, OverflowError, User.DoesNotExist) as e:
+            raise ValidationError("Token inválido")
+        except Exception as e:
+            raise ValidationError(str(e))

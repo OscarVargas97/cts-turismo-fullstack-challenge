@@ -3,6 +3,7 @@ from django.urls import path
 from authentication.login.views import LoginView
 from authentication.change_pasword.views import (
     ChangePasswordRequestView,
+    ChangePasswordView,
 )
 from authentication.register.views import (
     RegisterView,
@@ -18,6 +19,11 @@ urlpatterns = [
     path(
         "change-password-request/",
         ChangePasswordRequestView.as_view(),
+        name="change-password",
+    ),
+    path(
+        "change-password/",
+        ChangePasswordView.as_view(),
         name="change-password",
     ),
 ]
