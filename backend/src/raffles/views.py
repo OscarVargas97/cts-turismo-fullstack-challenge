@@ -16,7 +16,6 @@ from django.conf import settings
 
 from .models import (
     Participant,
-    Prize,
     Raffle,
     RafflePrize,
     RaffleStatus,
@@ -55,7 +54,7 @@ class RaffleActivate(GenericAPIView):
 
 
 class NewWinnerView(TemplateEmailMixin, GenericAPIView):
-    permission_classes = [AllowAny]
+    permission_classes = [IsAuthenticated, IsSuperAdmin]
     serializer_class = WinnerSerializer
     template_key = "winner"
     template_context = {}  # <- Añadir esta línea
@@ -203,7 +202,7 @@ class JoinRaffle(GenericAPIView):
 
 
 class ActiveRaffleParticipantsView(ListAPIView):
-    permission_classes = [AllowAny]
+    permission_classes = [IsAuthenticated, IsSuperAdmin]
     serializer_class = ParticipantUserSerializer
     pagination_class = StandardResultsSetPagination
 
