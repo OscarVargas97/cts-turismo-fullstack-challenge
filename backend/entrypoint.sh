@@ -12,6 +12,8 @@ if [ -f "./requirements.txt" ] && [ -d "./src" ]; then
   cd ./src
   python manage.py wait_for_db
   python manage.py migrate
+  python manage.py create_raffle_data
+  python manage.py create_admin
   python manage.py runserver 0.0.0.0:8000
 else
   # Mantener el contenedor vivo si no hay `requirements.txt` o `src`

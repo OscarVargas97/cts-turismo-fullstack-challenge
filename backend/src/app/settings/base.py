@@ -5,7 +5,6 @@ from pathlib import Path
 import environ
 
 BASE_DIR = Path(__file__).resolve().parent.parent
-print(BASE_DIR)
 env = environ.Env()
 env.read_env(os.path.join(BASE_DIR, ".env"))
 env = environ.Env(
@@ -44,12 +43,14 @@ THIRD_PARTY_APPS = [
     "rest_framework_simplejwt",
     "django_softdelete",
     "psycopg",
+    "phonenumber_field",
 ]
 
 LOCAL_APPS = [
     "app",
     "authentication",
     "raffles",
+    "emails",
 ]
 
 INSTALLED_APPS = DJANGO_APPS + THIRD_PARTY_APPS + LOCAL_APPS
@@ -70,7 +71,7 @@ ROOT_URLCONF = "app.urls"
 TEMPLATES = [
     {
         "BACKEND": "django.template.backends.django.DjangoTemplates",
-        "DIRS": [],
+        "DIRS": [BASE_DIR / "templates"],  # <--- esto importa
         "APP_DIRS": True,
         "OPTIONS": {
             "context_processors": [
@@ -113,8 +114,9 @@ AUTH_PASSWORD_VALIDATORS = [
 ]
 
 REST_FRAMEWORK = {
+    "EXCEPTION_HANDLER": "app.jwt.exceptions.custom_exception_handler",
     "DEFAULT_AUTHENTICATION_CLASSES": [
-        "rest_framework_simplejwt.authentication.JWTAuthentication",  # noqa: F401
+        "app.jwt.auth.CookieJWTAuthentication",  # noqa: F401
     ],
     "DEFAULT_PERMISSION_CLASSES": [
         "rest_framework.permissions.IsAuthenticated",
@@ -128,8 +130,8 @@ SIMPLE_JWT = {
     "ROTATE_REFRESH_TOKENS": True,
     "SIGNING_KEY": "tu_clave_secreta",
     "ALGORITHM": "HS256",
-    "AUTH_COOKIE": "jwt-access-token",
-    "AUTH_COOKIE_SECURE": False,
+    "AUTH_COOKIE": "access",
+    "AUTH_COOKIE_SECURE": True,
     "AUTH_COOKIE_HTTP_ONLY": True,
     "AUTH_COOKIE_PATH": "/",
     "AUTH_COOKIE_SAMESITE": "Lax",

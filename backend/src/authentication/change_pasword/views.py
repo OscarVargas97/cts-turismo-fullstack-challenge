@@ -1,39 +1,51 @@
-import uuid
-from django.contrib.auth.tokens import default_token_generator
 from rest_framework.response import Response
 from rest_framework.views import APIView
-from app.public.mixins import BaseEmailMixin
+from emails.mixins import TemplateEmailMixin
 from django.conf import settings
-from django.utils.http import urlsafe_base64_encode, urlsafe_base64_decode
-from rest_framework.exceptions import AuthenticationFailed, NotFound, ValidationError
+from rest_framework.exceptions import AuthenticationFailed, NotFound
 from authentication.models import User
-from django.utils.encoding import force_bytes
-from .serializers import ChangePasswordSerializer
+from ..serializers import ChangePasswordSerializer
 from rest_framework.permissions import AllowAny
+from rest_framework import status
+from ..token_manager import TokenManager
+from app.public.mixins import ResponseMixin
 
 
-class ChangePasswordRequestView(APIView, BaseEmailMixin):
+class ChangePasswordRequestView(ResponseMixin, APIView, TemplateEmailMixin):
     permission_classes = ()
     authentication_classes = ()
+    template_key = "change_password"  # clave correcta del template
 
     def post(self, request):
         email = request.data.get("email")
         if not email:
             raise AuthenticationFailed("Email is required")
-        user = User.objects.filter(email__iexact=email.strip()).first()
 
-        if user is None:
+        user = User.objects.filter(email__iexact=email.strip()).first()
+        print("usuario", user)
+        if not user:
             raise NotFound("User not found")
-        payload_raw = (
-            f"pwd_reset:::{str(user.uuid)}:::{default_token_generator.make_token(user)}"
-        )
-        payload = urlsafe_base64_encode(force_bytes(payload_raw))
-        verification_link = f"{settings.FRONTEND_URL}/reset-password/{payload}"
+
+        token_manager = TokenManager()
+        token = token_manager.create_token(user, purpose="password_reset")
+
+        change_password_link = f"{settings.FRONTEND_URL}/auth/change-password/{token}"
+
+        self.user = user
+        self.from_email = settings.EMAIL_HOST_USER
         self.destination_email = [user.email]
-        self.email_subject = "Cambio de contraseña"
-        self.email_message = f"Para cambiar su contraseña, haga clic en el siguiente enlace: {verification_link}"
+        self.template_context = {
+            "username": user.username,
+            "change_password_link": change_password_link,
+            "subject": "Cambio de contraseña",
+            "company_name": "Mi Empresa",
+        }
+
         self._handle_email(request)
-        return Response({"message": "Email sent"})
+
+        return self.success_response(
+            message="Se ha enviado el correo para cambiar la contraseña"
+        )
 
 
 class ChangePasswordView(APIView):
@@ -43,26 +55,23 @@ class ChangePasswordView(APIView):
     def post(self, request):
         serializer = self.serializer_class(data=request.data)
         serializer.is_valid(raise_exception=True)
+        token = request.data.get("token")
+        if not token:
+            return Response(
+                {"error": "Token requerido"}, status=status.HTTP_400_BAD_REQUEST
+            )
+
+        token_manager = TokenManager()
+        payload_or_error = token_manager.validate_token(token, purpose="password_reset")
 
         try:
-            token = request.data.get("token")
-            full_token = urlsafe_base64_decode(token).decode("utf-8")
-            prefix, uuid_str, token = full_token.split(":::")
+            user = User.objects.get(uuid=payload_or_error.get("uuid"))
+        except User.DoesNotExist:
+            return Response(
+                {"error": "Usuario no encontrado"}, status=status.HTTP_404_NOT_FOUND
+            )
 
-            if prefix != "pwd_reset":
-                raise ValidationError("Token inválido")
+        user.set_password(serializer.validated_data["new_password"])
+        user.save()
 
-            user = User.objects.get(uuid=uuid.UUID(uuid_str))
-
-            if not default_token_generator.check_token(user, token):
-                raise ValidationError("Token expirado o inválido")
-
-            user.set_password(serializer.validated_data["new_password"])
-            user.save()
-
-            return Response({"message": "Contraseña actualizada exitosamente"})
-
-        except (TypeError, ValueError, OverflowError, User.DoesNotExist) as e:
-            raise ValidationError("Token inválido")
-        except Exception as e:
-            raise ValidationError(str(e))
+        return Response({"message": "Contraseña actualizada exitosamente"})

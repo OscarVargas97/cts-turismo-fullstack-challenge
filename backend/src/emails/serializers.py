@@ -8,6 +8,7 @@ class EmailSerializer(serializers.Serializer):
     message = serializers.CharField()
     from_email = serializers.EmailField()
     recipient_list = serializers.ListField(child=serializers.EmailField())
+    html_message = serializers.CharField(required=False, allow_blank=True)
 
     def save(self):
         return EmailData(**self.validated_data)

@@ -1,52 +1,81 @@
+from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
+from rest_framework.response import Response
 from rest_framework import status
 from rest_framework.request import Request
-from rest_framework.response import Response
-from rest_framework_simplejwt.exceptions import InvalidToken, TokenError
-from rest_framework_simplejwt.views import TokenObtainPairView
-from app.public.handlers import CookieHandler
-from rest_framework_simplejwt.views import TokenRefreshView
+from rest_framework_simplejwt.exceptions import TokenError, InvalidToken
+from rest_framework_simplejwt.tokens import AccessToken
+from django.contrib.auth import get_user_model
+
+User = get_user_model()
+
+from .handlers import CookieHandler
 
 
-class CustomTokenObtainPairView(TokenObtainPairView):
+class BaseTokenView:
+    user = None
+    tokens = None  # We'll store access and refresh here
+
+    def build_response(self) -> Response:
+        if not self.user:
+            return Response(
+                {"detail": "User not found"}, status=status.HTTP_404_NOT_FOUND
+            )
+
+        user_data = {
+            "uuid": str(self.user.uuid) if hasattr(self.user, "uuid") else None,
+            "username": self.user.username,
+            "email": self.user.email,
+        }
+
+        response = Response({"user": user_data}, status=status.HTTP_200_OK)
+
+        # If tokens exist, set them in cookies
+        if self.tokens:
+            if "access" in self.tokens:
+                CookieHandler.set_jwt_cookies(response, "access", self.tokens["access"])
+            if "refresh" in self.tokens:
+                CookieHandler.set_jwt_cookies(
+                    response, "refresh", self.tokens["refresh"]
+                )
+
+        return response
+
+
+class CustomTokenObtainPairView(BaseTokenView, TokenObtainPairView):
     def post(self, request: Request, *args, **kwargs) -> Response:
         serializer = self.get_serializer(data=request.data)
         try:
             serializer.is_valid(raise_exception=True)
         except TokenError as e:
             raise InvalidToken(e.args[0])
-        self.user = serializer.user
-        return self.build_response(request, serializer.validated_data)
+        self.tokens = serializer.validated_data
+        self.user = getattr(serializer, "user", None)
 
-    def build_response(self, request, serializer: dict) -> Response:
-        return Response(serializer.validated_data, status=status.HTTP_200_OK)
-
-
-class CookieTokenObtainPairView(CustomTokenObtainPairView):
-
-    def build_response(self, request, tokens: dict) -> Response:
-        response = Response({"access": tokens["access"]}, status=status.HTTP_200_OK)
-        CookieHandler.set_jwt_cookies(response, "refresh", tokens["refresh"])
-        return response
+        return self.build_response()
 
 
-class RefreshTokenView(TokenRefreshView):
-    def post(self, request, *args, **kwargs):
-        refresh_token = request.COOKIES.get("refresh")
-        print(request.COOKIES.get("refresh"))
-        if not refresh_token:
-            return Response({"detail": "No refresh token provided"}, status=401)
-
-        request.data["refresh"] = refresh_token
+class CustomTokenRefreshView(BaseTokenView, TokenRefreshView):
+    def post(self, request: Request, *args, **kwargs) -> Response:
+        serializer = self.get_serializer(data=request.data)
         try:
-            response = super().post(request, *args, **kwargs)
+            serializer.is_valid(raise_exception=True)
+        except TokenError as e:
+            raise InvalidToken(e.args[0])
 
-            if "refresh" in response.data:
-                CookieHandler.set_jwt_cookies(
-                    response, "refresh", response.data["refresh"]
-                )
-                del response.data["refresh"]
+        self.tokens = serializer.validated_data
+        access_token_str = serializer.validated_data.get("access")
+        try:
+            access_token = AccessToken(access_token_str)
+            user_id = access_token.get("user_id")
+        except Exception:
+            user_id = None
 
-            return response
+        if user_id:
+            try:
+                self.user = User.objects.get(id=user_id)
+            except User.DoesNotExist:
+                self.user = None
+        else:
+            self.user = None
 
-        except TokenError:
-            return Response({"detail": "Invalid refresh token"}, status=401)
+        return self.build_response()

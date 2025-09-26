@@ -30,3 +30,6 @@ pyotp
 
 # --- Imágenes ---
 Pillow
+cryptography
+pyjwt
+    django-phonenumber-field[phonenumbers]

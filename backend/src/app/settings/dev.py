@@ -11,7 +11,7 @@ MIDDLEWARE = MIDDLEWARE + [
     "silk.middleware.SilkyMiddleware",
 ]
 
-SIMPLE_JWT["AUTH_COOKIE_SECURE"] = True
+SIMPLE_JWT["AUTH_COOKIE_SECURE"] = False
 CSRF_COOKIE_SECURE = False
 
 INTERNAL_IPS = [
